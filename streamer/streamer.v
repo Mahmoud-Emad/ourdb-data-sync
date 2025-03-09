@@ -96,6 +96,7 @@ fn (self Streamer) new_master_node(params StreamerNodeParams) !StreamerNode {
 		public_key:      params.public_key
 		mycelium_client: mycelium_client
 		db:              &db
+		is_master:       true
 	}
 }
 
