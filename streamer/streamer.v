@@ -1,6 +1,7 @@
 module streamer
 
 import freeflowuniverse.herolib.clients.mycelium
+import freeflowuniverse.herolib.data.ourdb
 
 // Streamer represents the entire network, including master and workers
 pub struct Streamer {
@@ -19,11 +20,17 @@ pub mut:
 }
 
 // Creates a new streamer instance
-pub fn new_streamer(params NewStreamerParams) Streamer {
+pub fn new_streamer(params NewStreamerParams) !Streamer {
 	println('Creating a new streamer...')
+	mut db := ourdb.new()!
+	master := StreamerNode{
+		db: &db
+	}
+
 	return Streamer{
-		name: params.name
-		port: params.port
+		name:   params.name
+		port:   params.port
+		master: master
 	}
 }
 
@@ -43,7 +50,7 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 	mut streamer_ := new_streamer(
 		port: params.port
 		name: params.name
-	)
+	)!
 
 	mut master_node := streamer_.new_master_node(
 		public_key: params.public_key
@@ -62,8 +69,11 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 @[params]
 pub struct StreamerNodeParams {
 pub mut:
-	public_key string @[required]
-	address    string @[required]
+	public_key       string @[required] // Node public key
+	address          string @[required] // Node address
+	db_dir           string = '/tmp/ourdb' // Database directory
+	incremental_mode bool // Incremental mode
+	reset            bool // Reset database
 }
 
 // Create a new master node
@@ -73,10 +83,19 @@ fn (self Streamer) new_master_node(params StreamerNodeParams) !StreamerNode {
 	mycelium_client.server_url = 'http://localhost:${self.port}'
 	mycelium_client.name = 'streamer_master'
 
+	mut db := ourdb.new(
+		record_nr_max:    16777216 - 1 // max size of records
+		record_size_max:  1024
+		path:             params.db_dir
+		reset:            params.reset
+		incremental_mode: params.incremental_mode
+	)!
+
 	return StreamerNode{
 		address:         params.address
 		public_key:      params.public_key
 		mycelium_client: mycelium_client
+		db:              &db
 	}
 }
 
@@ -87,16 +106,7 @@ pub fn (mut self Streamer) add_master(params StreamerNodeParams) !StreamerNode {
 		return error('Streamer already has a master node!')
 	}
 
-	mut mycelium_client := mycelium.get()!
-	mycelium_client.server_url = 'http://localhost:${self.port}'
-	mycelium_client.name = 'streamer_master'
-
-	new_master := StreamerNode{
-		address:         params.address
-		public_key:      params.public_key
-		mycelium_client: mycelium_client
-		port:            self.port
-	}
+	new_master := self.new_master_node(params)!
 
 	self.master = new_master
 	return self.master
