@@ -9,7 +9,7 @@ fn main() {
 	mut streamer_ := streamer.new_streamer(
 		name: 'streamer'
 		port: 8080
-	)
+	)!
 
 	streamer_.add_master(
 		address:    '4ff:3da9:f2b2:4103:fa6e:7ea:7cbe:8fef'
