@@ -19,7 +19,7 @@ pub mut:
 }
 
 // Creates a new streamer instance
-pub fn new_streamer(params NewStreamerParams) !Streamer {
+pub fn new_streamer(params NewStreamerParams) Streamer {
 	println('Creating a new streamer...')
 	return Streamer{
 		name: params.name
@@ -40,9 +40,10 @@ pub mut:
 // Connects to an existing streamer master node, workers should call this methods and will be added later
 pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 	println('Connecting to an existing streamer...')
-	mut streamer_ := Streamer{
+	mut streamer_ := new_streamer(
 		port: params.port
-	}
+		name: params.name
+	)
 
 	mut master_node := streamer_.new_master_node(
 		public_key: params.public_key

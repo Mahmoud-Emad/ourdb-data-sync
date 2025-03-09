@@ -16,7 +16,7 @@ pub mut:
 	address         string // Network address of the master (e.g., "127.0.0.1:8080")
 	mycelium_client &mycelium.Mycelium = unsafe { nil } // Mycelium client
 	workers         []StreamerNode
-	port            int
+	port            int = 8080
 }
 
 // Check if a master node is running
