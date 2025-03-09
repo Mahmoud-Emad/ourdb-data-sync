@@ -76,7 +76,7 @@ pub fn (mut node StreamerNode) start() ! {
 
 fn (mut node StreamerNode) handle_log_messages() ! {
 	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'logs')!
-	decoded_message := base64.decode(message.payload)
+	decoded_message := base64.decode(message.payload).bytestr()
 	if decoded_message.len != 0 {
 		println(decoded_message)
 	}
