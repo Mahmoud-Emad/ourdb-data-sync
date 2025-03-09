@@ -6,31 +6,41 @@ import freeflowuniverse.herolib.data.ourdb
 // Streamer represents the entire network, including master and workers
 pub struct Streamer {
 pub mut:
-	name   string = 'streamer'
-	port   int    = 8080
-	master StreamerNode
+	name             string = 'streamer'
+	port             int    = 8080
+	master           StreamerNode
+	incremental_mode bool = true // Incremental mode
+	reset            bool = true // Reset database
 }
 
 // NewStreamerParams for creating a new streamer
 @[params]
 pub struct NewStreamerParams {
 pub mut:
-	name string = 'streamer'
-	port int    = 8080
+	name             string = 'streamer'
+	port             int    = 8080
+	incremental_mode bool   = true // Incremental mode
+	reset            bool   = true // Reset database
 }
 
 // Creates a new streamer instance
 pub fn new_streamer(params NewStreamerParams) !Streamer {
 	println('Creating a new streamer...')
-	mut db := ourdb.new()!
+	mut db := ourdb.new(
+		incremental_mode: params.incremental_mode
+		reset:            params.reset
+	)!
+
 	master := StreamerNode{
 		db: &db
 	}
 
 	return Streamer{
-		name:   params.name
-		port:   params.port
-		master: master
+		name:             params.name
+		port:             params.port
+		master:           master
+		incremental_mode: params.incremental_mode
+		reset:            params.reset
 	}
 }
 
@@ -50,8 +60,11 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 	mut streamer_ := new_streamer(
 		port: params.port
 		name: params.name
+		// incremental_mode: params.incremental_mode
+		// reset:            params.reset
 	)!
 
+	// TODO: Get the running master data instead
 	mut master_node := streamer_.new_master_node(
 		public_key: params.public_key
 		address:    params.address
@@ -72,8 +85,8 @@ pub mut:
 	public_key       string @[required] // Node public key
 	address          string @[required] // Node address
 	db_dir           string = '/tmp/ourdb' // Database directory
-	incremental_mode bool // Incremental mode
-	reset            bool // Reset database
+	incremental_mode bool   = true         // Incremental mode
+	reset            bool   = true         // Reset database
 }
 
 // Create a new master node
