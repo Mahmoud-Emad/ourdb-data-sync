@@ -17,16 +17,23 @@ fn main() {
 	)!
 
 	println('Writing to the master node')
-	id := master_node.write(
-		// In incremental mode the first ID will be 0
-		value: 'value1'
-	)!
-	println('Set value with ID ${id}')
+	nm := 0
+	for {
+		println('Set 5 records...')
+		if nm == 5 {
+			break
+		}
+		id := master_node.write(
+			// In incremental mode the first ID will be 0
+			value: 'value${nm + 1}'
+		)!
+		println('Set value with ID ${id}')
+	}
 
-	println('Reading from the worker node')
-	value := worker_node.read(
-		key: id
-	)!
+	// println('Reading from the worker node')
+	// value := worker_node.read(
+	// 	key: id
+	// )!
 
-	println('Value: ${value}')
+	// println('Value: ${value}')
 }

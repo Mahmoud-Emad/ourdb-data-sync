@@ -13,15 +13,13 @@ const max_workers = 10
 // StreamerMasterNode represents the master node in the streamer network
 pub struct StreamerNode {
 pub mut:
-	public_key         string // Mycelium public key of the master
-	address            string // Network address of the master (e.g., "127.0.0.1:8080")
-	mycelium_client    &mycelium.Mycelium = unsafe { nil } // Mycelium client
-	workers            []StreamerNode // List of connected workers
-	port               int = 8080 // HTTP server port
-	is_master          bool // Flag to indicate if the node is a master
-	db                 &ourdb.OurDB @[skip; str: skip] // Embedded key-value database
-	worker_sync_states map[string]u32 // public_key -> last_synced_index
-	master_public_key  string         // Mycelium public key of the master
+	public_key      string // Mycelium public key of the master
+	address         string // Network address of the master (e.g., "127.0.0.1:8080")
+	mycelium_client &mycelium.Mycelium = unsafe { nil } // Mycelium client
+	workers         []StreamerNode // List of connected workers
+	port            int = 8080 // HTTP server port
+	is_master       bool // Flag to indicate if the node is a master
+	db              &ourdb.OurDB @[skip; str: skip] // Embedded key-value database
 }
 
 // Check if a master node is running
@@ -53,12 +51,11 @@ pub fn (mut node StreamerNode) add_worker(params StreamerNodeParams) !StreamerNo
 	)!
 
 	new_node := StreamerNode{
-		address:           params.address
-		public_key:        params.public_key
-		mycelium_client:   mycelium_client
-		is_master:         false
-		db:                &db
-		master_public_key: node.public_key
+		address:         params.address
+		public_key:      params.public_key
+		mycelium_client: mycelium_client
+		is_master:       false
+		db:              &db
 	}
 
 	decoded_node_to_json := json.encode(new_node)
@@ -88,12 +85,7 @@ pub fn (mut node StreamerNode) start() ! {
 		node.handle_log_messages() or {}
 		node.handle_connect_messages() or {}
 		node.ping_workers() or {}
-		if node.is_master {
-			node.handle_sync_requests() or {}
-		} else {
-			node.request_sync() or {}
-			node.handle_sync_updates() or {}
-		}
+		node.sync_db() or {}
 	}
 }
 
@@ -105,59 +97,26 @@ fn (mut node StreamerNode) handle_log_messages() ! {
 	}
 }
 
-fn (mut worker StreamerNode) request_sync() ! {
-	last_index := worker.db.get_last_index()!
-	encoded_index := base64.encode(last_index.str().bytes())
-	worker.mycelium_client.send_msg(
-		topic:      'sync_request'
-		payload:    encoded_index
-		public_key: worker.master_public_key // Assuming master’s key is available
-	)!
+fn (mut node StreamerNode) sync_db() ! {
+	last_index := node.db.get_last_index()!
+	println('last_index: ${last_index}')
+	// data := node.db.push_updates(last_index)!
+	// encoded_data := base64.encode(data)
+
+	// for mut worker in node.workers {
+	// 	node.mycelium_client.send_msg(
+	// 		topic:      'db_sync'
+	// 		payload:    encoded_data
+	// 		public_key: worker.public_key
+	// 	)!
+	// }
+
+	// message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'db_sync')!
+	// decoded_message := base64.decode(message.payload).bytestr()
+	// if decoded_message.len != 0 {
+	// 	println('Received sync message: ${decoded_message}')
+	// }
 }
-
-fn (mut node StreamerNode) handle_sync_requests() ! {
-	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'sync_request')!
-	if message.payload.len > 0 {
-		decoded_index := base64.decode(message.payload).bytestr().u32()
-		worker_key := message.src_pk
-		updates := node.db.push_updates(decoded_index)!
-		encoded_updates := base64.encode(updates)
-		node.mycelium_client.send_msg(
-			topic:      'db_sync'
-			payload:    encoded_updates
-			public_key: worker_key
-		)!
-		node.worker_sync_states[worker_key] = node.db.get_last_index()!
-	}
-}
-
-fn (mut worker StreamerNode) handle_sync_updates() ! {
-	message := worker.mycelium_client.receive_msg(wait: false, peek: true, topic: 'db_sync')!
-	if message.payload.len > 0 {
-		updates := base64.decode(message.payload)
-		worker.db.sync_updates(updates)!
-	}
-}
-
-// fn (mut node StreamerNode) sync_db() ! {
-// 	last_index := node.db.get_last_index()!
-// 	data := node.db.push_updates(last_index)!
-// 	encoded_data := base64.encode(data)
-
-// 	for mut worker in node.workers {
-// 		node.mycelium_client.send_msg(
-// 			topic:      'db_sync'
-// 			payload:    encoded_data
-// 			public_key: worker.public_key
-// 		)!
-// 	}
-
-// 	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'db_sync')!
-// 	decoded_message := base64.decode(message.payload).bytestr()
-// 	if decoded_message.len != 0 {
-// 		println('Received sync message: ${decoded_message}')
-// 	}
-// }
 
 fn (mut node StreamerNode) handle_connect_messages() ! {
 	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'connect')!
