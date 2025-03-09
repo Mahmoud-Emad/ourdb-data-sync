@@ -16,7 +16,5 @@ fn main() {
 		address:    '59c:28ee:8597:6c20:3b2f:a9ee:2e18:9d4f'
 	)!
 
-	println('worker_node: ${worker_node}')
-
-	// worker_node.start()!
+	worker_node.start()!
 }

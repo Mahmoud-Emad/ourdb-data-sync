@@ -62,7 +62,7 @@ pub fn (mut node StreamerNode) add_worker(params StreamerNodeParams) !StreamerNo
 fn (mut node StreamerNode) stop() ! {}
 
 // Method to start a master node
-fn (mut node StreamerNode) start() ! {
+pub fn (mut node StreamerNode) start() ! {
 	println('Starting master node at ${node.address} with public key ${node.public_key}')
 
 	// Main loop for printing blobs
@@ -70,6 +70,7 @@ fn (mut node StreamerNode) start() ! {
 		time.sleep(2 * time.second)
 		node.handle_log_messages() or {}
 		node.handle_connect_messages() or {}
+		node.ping_workers() or {}
 	}
 }
 
@@ -83,20 +84,36 @@ fn (mut node StreamerNode) handle_log_messages() ! {
 
 fn (mut node StreamerNode) handle_connect_messages() ! {
 	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'connect')!
-	// node.
 	decoded_message := base64.decode(message.payload)
-	println('decoded_message: ${decoded_message}')
-	if decoded_message.len != 0 {
-		worker := json.decode(StreamerNode, decoded_message.bytestr()) or {
+	if decoded_message.len > 0 {
+		to_json_str := base64.decode(decoded_message.bytestr()).bytestr()
+		worker := json.decode(StreamerNode, to_json_str) or {
 			return error('Failed to decode worker node: ${err}')
 		}
-		println('worker: ${worker}')
 		node.workers << worker
-		println('Added worker node: ${worker.address}')
+		println('Worker ${worker.address} connected')
 	}
 }
 
 // Gets the list of workers
 pub fn (mut node StreamerNode) get_workers() []StreamerNode {
 	return node.workers
+}
+
+// Pings the workers, if node is not responding, remove it
+pub fn (mut node StreamerNode) ping_workers() ! {
+	for mut worker in node.workers {
+		if !worker.is_running() {
+			println('Worker ${worker.address} is not running, removing...')
+			idx := node.workers.index(worker)
+			node.workers.delete(idx)
+		} else {
+			// Send ping message to worker
+			node.mycelium_client.send_msg(
+				topic:      'logs'
+				payload:    'Master node is alive'
+				public_key: worker.public_key
+			)!
+		}
+	}
 }
