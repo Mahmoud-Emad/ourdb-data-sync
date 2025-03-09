@@ -4,17 +4,18 @@ import streamer
 
 fn main() {
 	println('Strating the streamer first!')
-	master_key := '570c1069736786f06c4fd2a6dc6c17cd88347604593b60e34b5688c369fa1b39'
-	worker_key := '46a9f9cee1ce98ef7478f3dea759589bbf6da9156533e63fed9f233640ac072c'
-
 	mut streamer_ := streamer.connect_streamer(
-		master_addr: master_key
+		address:    '4ff:3da9:f2b2:4103:fa6e:7ea:7cbe:8fef'
+		public_key: '570c1069736786f06c4fd2a6dc6c17cd88347604593b60e34b5688c369fa1b39'
+		port:       8080
 	)!
 
-	if streamer_.get_master().running {
+	mut master_node := streamer_.get_master()
+
+	if master_node.is_running() {
 		streamer_.add_worker(
-			public_key: worker_key
-			address:    '127.0.0.1:8081'
+			public_key: '46a9f9cee1ce98ef7478f3dea759589bbf6da9156533e63fed9f233640ac072c'
+			address:    '59c:28ee:8597:6c20:3b2f:a9ee:2e18:9d4f'
 		)!
 	}
 

@@ -1,8 +1,9 @@
 module streamer
 
 import time
-import json
 import freeflowuniverse.herolib.clients.mycelium
+import freeflowuniverse.herolib.osal
+import encoding.base64
 
 // StreamerMasterNode represents the master node in the streamer network
 pub struct StreamerMasterNode {
@@ -28,6 +29,14 @@ fn (mut node StreamerMasterNode) read_blob() string {
 	return state
 }
 
+pub fn (mut node StreamerMasterNode) is_running() bool {
+	ping_result := osal.ping(address: node.address, retry: 2) or { return false }
+	if ping_result == .ok {
+		return true
+	}
+	return false
+}
+
 // Placeholder method to start a master node
 fn (mut node StreamerMasterNode) start() ! {
 	println('Starting master node at ${node.address} with public key ${node.public_key}')
@@ -38,17 +47,24 @@ fn (mut node StreamerMasterNode) start() ! {
 
 	// Main loop for printing blobs
 	for {
+		node.handle_log_messages()!
 		time.sleep(2 * time.second)
-		println('Listening for messages...')
-		msg := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'logs') or {
-			continue
-		}
-		println('Received message: ${msg.payload}')
+		// println('Listening for messages...')
+		// logs_msg := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'logs')!
+		// println('Received message: ${logs_msg.payload}')
 
 		// blob := node.read_blob()
 		// if blob.len != 0 {
 		// 	println(blob)
 		// }
+	}
+}
+
+fn (mut node StreamerMasterNode) handle_log_messages() ! {
+	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'logs')!
+	decoded_message := base64.decode(message.payload)
+	if decoded_message.len != 0 {
+		println(decoded_message)
 	}
 }
 

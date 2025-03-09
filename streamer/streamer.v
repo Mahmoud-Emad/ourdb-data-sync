@@ -53,49 +53,32 @@ pub fn new_streamer(params NewStreamerParams) !Streamer {
 @[params]
 pub struct ConnectStreamerParams {
 pub mut:
-	master_addr string @[required] // Master public key
+	address    string @[required] // Master public key
+	public_key string @[required] // Master public key
+	port       int    @[required] // Port
+	name       string = 'new_streamer'
 }
 
-// Connects to an existing streamer by loading from internal.db
+// Connects to an existing streamer master node, workers should call this methods and will be added later
 pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 	println('Connecting to an existing streamer...')
 
-	file_content := os.read_file(internal_db_file_path) or {
-		return error('Internal DB file does not exist: ${err}')
+	mut streamer_ := Streamer{
+		port: params.port
+		name: ''
 	}
+	mut master_node := streamer_.new_master_node(
+		public_key: params.public_key
+		address:    params.address
+	) or { return error('Failed to add master node: ${err}') }
 
-	if file_content.len == 0 {
-		return error('Internal DB file is empty!')
-	}
+	master_node.mycelium_client.send_msg(
+		topic:      'connect'
+		public_key: master_node.public_key
+		payload:    ''
+	) or { return error('cannot connect to the master node due to: ${err}') }
 
-	// Decode the internal DB content into a map of master public keys to InternalDBEntry
-	mut content := json.decode(map[string]InternalDBEntry, file_content) or {
-		return error('Failed to decode internal DB: ${err}')
-	}
-
-	if content.len == 0 {
-		return error('Internal DB file is empty!')
-	}
-
-	// Find the master node matching the provided master_addr
-	if entry := content[params.master_addr] {
-		mut s := Streamer{
-			name:        'streamer'
-			port:        8080
-			master:      entry.master  // Directly load the saved master
-			workers:     entry.workers // Directly load the saved workers
-			internal_db: file_content
-			events:      new_streamer_events()
-		}
-
-		if s.workers.len > max_workers {
-			return error('Too many workers!')
-		}
-
-		return s
-	}
-
-	return error('Master node with public key ${params.master_addr} not found!')
+	return error('Master node with public key ${params.public_key} not found!')
 }
 
 // StreamerMasterParams for creating a new master node
