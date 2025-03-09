@@ -11,17 +11,10 @@ fn main() {
 	)!
 
 	mut master_node := streamer_.get_master()
+	mut worker_node := master_node.add_worker(
+		public_key: '46a9f9cee1ce98ef7478f3dea759589bbf6da9156533e63fed9f233640ac072c'
+		address:    '59c:28ee:8597:6c20:3b2f:a9ee:2e18:9d4f'
+	)!
 
-	if master_node.is_running() {
-		streamer_.add_worker(
-			public_key: '46a9f9cee1ce98ef7478f3dea759589bbf6da9156533e63fed9f233640ac072c'
-			address:    '59c:28ee:8597:6c20:3b2f:a9ee:2e18:9d4f'
-		)!
-	}
-
-	// workers := streamer_.get_workers()
-
-	// println('Workers: ${workers}')
-
-	// streamer_.start_master()
+	// worker_node.start()!
 }
