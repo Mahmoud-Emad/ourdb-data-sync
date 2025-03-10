@@ -88,6 +88,7 @@ pub fn (mut node StreamerNode) start() ! {
 		node.handle_log_messages() or {}
 		node.handle_connect_messages() or {}
 		node.ping_workers() or {}
+		node.ping_master() or {}
 		node.sync_db() or {}
 	}
 }
@@ -159,6 +160,17 @@ pub fn (mut node StreamerNode) ping_workers() ! {
 				public_key: worker.public_key
 			)!
 		}
+	}
+}
+
+// Pings the master node
+pub fn (mut node StreamerNode) ping_master() ! {
+	for mut worker in node.workers {
+		worker.mycelium_client.send_msg(
+			topic:      'logs'
+			payload:    'Worker node is alive'
+			public_key: node.public_key
+		)!
 	}
 }
 
