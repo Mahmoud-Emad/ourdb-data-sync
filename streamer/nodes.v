@@ -96,9 +96,11 @@ pub fn (mut node StreamerNode) start_and_listen() ! {
 		if node.is_master {
 			// node.set_master_state() or {}
 			node.handle_sync_requests() or {} // Master handles worker sync requests
+			node.master_sync() or {} // Master syncs with workers
 		} else {
 			node.request_sync() or {} // Worker requests updates from master
 			node.handle_sync_updates() or {} // Worker applies updates
+			node.handle_sync_master() or {}
 		}
 
 		time.sleep(2 * time.second)
@@ -241,6 +243,30 @@ fn (mut node StreamerNode) handle_log_messages() ! {
 	}
 }
 
+// handle_log_messages processes incoming log messages
+fn (mut node StreamerNode) handle_sync_master() ! {
+	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'master_sync')!
+	if message.payload.len > 0 {
+		mut master_json := base64.decode(message.payload).bytestr()
+		if master_json.len != 0 {
+			master_json = base64.decode(master_json).bytestr()
+		}
+
+		master := json.decode(StreamerNode, master_json) or {
+			return error('Failed to decode worker node: ${err}')
+		}
+
+		// Sync specific fields instead of overwriting node
+		if master.public_key == node.master_public_key {
+			// node.db = master.db // We need to fix the invalid memory access bug here.
+			log_event(
+				event_type: 'logs'
+				message:    'Synced state from master node: ${master.public_key}'
+			)
+		}
+	}
+}
+
 // handle_connect_messages processes connect messages to add workers
 fn (mut node StreamerNode) handle_connect_messages() ! {
 	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'connect')!
@@ -263,54 +289,6 @@ fn (mut node StreamerNode) handle_connect_messages() ! {
 		}
 	}
 }
-
-// // Set the state of the master node
-// pub fn (mut node StreamerNode) set_master_state() ! {
-// 	if !node.is_master {
-// 		return
-// 	}
-
-// 	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'set_master_state')!
-// 	if message.payload.len > 0 {
-// 		master_json := json.encode(node)
-// 		master_base64 := base64.encode(master_json.bytes())
-// 		log_event(event_type: 'logs', message: 'Sending master state to workers')
-// 		node.mycelium_client.send_msg(
-// 			topic:      'get_master_state'
-// 			payload:    master_base64
-// 			public_key: node.worker_public_key
-// 		) or { return error('Failed to send connect message: ${err}') }
-// 		log_event(event_type: 'logs', message: 'Master state sent to workers')
-// 	}
-// }
-
-// // Set the state of the master node
-// pub fn (mut node StreamerNode) get_master_state() ! {
-// 	if node.is_master {
-// 		return
-// 	}
-
-// 	println('Getting master state...')
-// 	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'get_master_state')!
-// 	println('After getting message: ${message}')
-// 	if message.payload.len > 0 {
-// 		println('In message payload')
-// 		mut master_json := base64.decode(message.payload).bytestr()
-// 		if master_json.len != 0 {
-// 			master_json = base64.decode(master_json).bytestr()
-// 		}
-
-// 		mut master := json.decode(StreamerNode, master_json) or {
-// 			return error('Failed to decode master node: ${err}')
-// 		}
-
-// 		log_event(
-// 			event_type: 'logs'
-// 			message:    'Received master state from worker node: ${master.public_key}'
-// 		)
-// 		node = master
-// 	}
-// }
 
 // ping_nodes pings all workers and removes unresponsive ones (master only)
 pub fn (mut node StreamerNode) ping_nodes() ! {
@@ -341,5 +319,31 @@ pub fn (mut node StreamerNode) ping_nodes() ! {
 			payload:    'Worker ${node.public_key} is pinging master node: ${node.master_public_key}'
 			public_key: node.master_public_key
 		)!
+	}
+}
+
+// ping_nodes pings all workers and removes unresponsive ones (master only)
+pub fn (mut node StreamerNode) master_sync() ! {
+	if node.is_master {
+		for mut worker in node.workers {
+			if worker.is_running() {
+				log_event(
+					event_type: 'logs'
+					message:    'Sending master state to worker node: ${worker.public_key}'
+				)
+				master_json := json.encode(node)
+				master_base64 := base64.encode(master_json.bytes())
+
+				node.mycelium_client.send_msg(
+					topic:      'master_sync'
+					payload:    master_base64
+					public_key: worker.public_key
+				)!
+				log_event(
+					event_type: 'logs'
+					message:    'Sent master state to worker node: ${worker.public_key}'
+				)
+			}
+		}
 	}
 }

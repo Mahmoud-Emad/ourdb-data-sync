@@ -84,10 +84,18 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 		address:    params.master_address
 	)!
 
+	if !streamer_.master.is_running() {
+		return error('Master node is not running')
+	}
+
 	mut worker_node := streamer_.master.add_worker(
 		public_key: params.worker_public_key
 		address:    params.worker_address
 	)!
+
+	if !worker_node.is_running() {
+		return error('Worker node is not running')
+	}
 
 	worker_node.connect_to_master()!
 	streamer_.master.mycelium_client = new_mycelium_client(name: params.name, port: params.port)!
