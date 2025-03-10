@@ -13,6 +13,7 @@ const max_workers = 10
 // StreamerNode represents either a master or worker node in the streamer network
 pub struct StreamerNode {
 pub mut:
+	name              string = 'streamer_node' // Name of the node
 	public_key        string // Mycelium public key of the node
 	address           string // Network address (e.g., "127.0.0.1:8080")
 	mycelium_client   &mycelium.Mycelium = unsafe { nil } // Mycelium client instance
@@ -21,7 +22,6 @@ pub mut:
 	is_master         bool // Flag indicating if this is a master node
 	db                &ourdb.OurDB @[skip; str: skip] // Embedded key-value database
 	master_public_key string // Public key of the master node (for workers)
-	worker_public_key string // Public key of the worker node (for master)
 	last_synced_index u32    // Last synchronized index for workers
 }
 
@@ -31,15 +31,38 @@ fn (mut node StreamerNode) is_running() bool {
 	return ping_result == .ok
 }
 
+fn (mut worker StreamerNode) connect_to_master() ! {
+	if worker.is_master {
+		return error('Master nodes cannot connect to other master nodes')
+	}
+
+	// Q: Do we need to push the whole master node with its workers?
+	worker_json := json.encode(worker)
+	worker_base64 := base64.encode(worker_json.bytes())
+
+	log_event(
+		event_type: 'connection'
+		message:    'Trying to connect worker node: ${worker.public_key} to master node: ${worker.master_public_key}'
+	)
+
+	// Send connect message to master
+	worker.mycelium_client.send_msg(
+		topic:      'connect'
+		payload:    worker_base64
+		public_key: worker.master_public_key
+	) or { return error('Failed to send connect message: ${err}') }
+}
+
 // add_worker creates and registers a new worker node under the master
 pub fn (mut node StreamerNode) add_worker(params StreamerNodeParams) !StreamerNode {
 	if node.workers.len >= max_workers {
 		return error('Too many workers!')
 	}
 
-	mut mycelium_client := mycelium.get()!
-	mycelium_client.server_url = 'http://localhost:${node.port}'
-	mycelium_client.name = 'streamer_worker'
+	mut mycelium_client := new_mycelium_client(
+		name: 'streamer_worker_node'
+		port: node.port
+	)!
 
 	mut db := ourdb.new(
 		record_nr_max:    16777216 - 1
@@ -49,38 +72,29 @@ pub fn (mut node StreamerNode) add_worker(params StreamerNodeParams) !StreamerNo
 		incremental_mode: params.incremental_mode
 	)!
 
-	new_node := StreamerNode{
+	new_worker_node := StreamerNode{
 		address:           params.address
 		public_key:        params.public_key
 		mycelium_client:   mycelium_client
 		is_master:         false
 		db:                &db
 		master_public_key: node.public_key
-		last_synced_index: 0 // Start at 0, updated after first sync
+		last_synced_index: 0
 	}
 
-	worker_json := json.encode(new_node)
-	worker_base64 := base64.encode(worker_json.bytes())
-
-	node.mycelium_client.send_msg(
-		topic:      'connect'
-		payload:    worker_base64
-		public_key: node.public_key
-	) or { return error('Failed to send connect message: ${err}') }
-
-	node.workers << new_node
-	return new_node
+	node.workers << new_worker_node
+	return new_worker_node
 }
 
 // start runs the node's main loop
-pub fn (mut node StreamerNode) start() ! {
+pub fn (mut node StreamerNode) start_and_listen() ! {
 	log_event(
 		event_type: 'logs'
 		message:    'Starting node at ${node.address} with public key ${node.public_key}'
 	)
 	for {
 		if node.is_master {
-			node.set_master_state() or {}
+			// node.set_master_state() or {}
 			node.handle_sync_requests() or {} // Master handles worker sync requests
 		} else {
 			node.request_sync() or {} // Worker requests updates from master
@@ -250,53 +264,53 @@ fn (mut node StreamerNode) handle_connect_messages() ! {
 	}
 }
 
-// Set the state of the master node
-pub fn (mut node StreamerNode) set_master_state() ! {
-	if !node.is_master {
-		return
-	}
+// // Set the state of the master node
+// pub fn (mut node StreamerNode) set_master_state() ! {
+// 	if !node.is_master {
+// 		return
+// 	}
 
-	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'set_master_state')!
-	if message.payload.len > 0 {
-		master_json := json.encode(node)
-		master_base64 := base64.encode(master_json.bytes())
-		log_event(event_type: 'logs', message: 'Sending master state to workers')
-		node.mycelium_client.send_msg(
-			topic:      'get_master_state'
-			payload:    master_base64
-			public_key: node.worker_public_key
-		) or { return error('Failed to send connect message: ${err}') }
-		log_event(event_type: 'logs', message: 'Master state sent to workers')
-	}
-}
+// 	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'set_master_state')!
+// 	if message.payload.len > 0 {
+// 		master_json := json.encode(node)
+// 		master_base64 := base64.encode(master_json.bytes())
+// 		log_event(event_type: 'logs', message: 'Sending master state to workers')
+// 		node.mycelium_client.send_msg(
+// 			topic:      'get_master_state'
+// 			payload:    master_base64
+// 			public_key: node.worker_public_key
+// 		) or { return error('Failed to send connect message: ${err}') }
+// 		log_event(event_type: 'logs', message: 'Master state sent to workers')
+// 	}
+// }
 
-// Set the state of the master node
-pub fn (mut node StreamerNode) get_master_state() ! {
-	if node.is_master {
-		return
-	}
+// // Set the state of the master node
+// pub fn (mut node StreamerNode) get_master_state() ! {
+// 	if node.is_master {
+// 		return
+// 	}
 
-	println('Getting master state...')
-	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'get_master_state')!
-	println('After getting message: ${message}')
-	if message.payload.len > 0 {
-		println('In message payload')
-		mut master_json := base64.decode(message.payload).bytestr()
-		if master_json.len != 0 {
-			master_json = base64.decode(master_json).bytestr()
-		}
+// 	println('Getting master state...')
+// 	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'get_master_state')!
+// 	println('After getting message: ${message}')
+// 	if message.payload.len > 0 {
+// 		println('In message payload')
+// 		mut master_json := base64.decode(message.payload).bytestr()
+// 		if master_json.len != 0 {
+// 			master_json = base64.decode(master_json).bytestr()
+// 		}
 
-		mut master := json.decode(StreamerNode, master_json) or {
-			return error('Failed to decode master node: ${err}')
-		}
+// 		mut master := json.decode(StreamerNode, master_json) or {
+// 			return error('Failed to decode master node: ${err}')
+// 		}
 
-		log_event(
-			event_type: 'logs'
-			message:    'Received master state from worker node: ${master.public_key}'
-		)
-		node = master
-	}
-}
+// 		log_event(
+// 			event_type: 'logs'
+// 			message:    'Received master state from worker node: ${master.public_key}'
+// 		)
+// 		node = master
+// 	}
+// }
 
 // ping_nodes pings all workers and removes unresponsive ones (master only)
 pub fn (mut node StreamerNode) ping_nodes() ! {

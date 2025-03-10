@@ -11,10 +11,10 @@ fn main() {
 		port: 8080
 	)!
 
-	streamer_.add_master(
+	mut master_node := streamer_.add_master(
 		address:    '4ff:3da9:f2b2:4103:fa6e:7ea:7cbe:8fef'
 		public_key: '570c1069736786f06c4fd2a6dc6c17cd88347604593b60e34b5688c369fa1b39'
 	)!
 
-	streamer_.start_master()!
+	master_node.start_and_listen()!
 }

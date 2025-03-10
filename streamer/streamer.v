@@ -2,9 +2,9 @@ module streamer
 
 import freeflowuniverse.herolib.clients.mycelium
 import freeflowuniverse.herolib.data.ourdb
-import encoding.base64
-import json
-import time
+// import encoding.base64
+// import json
+// import time
 
 // Streamer represents the entire network, including master and workers
 pub struct Streamer {
@@ -47,49 +47,51 @@ pub fn new_streamer(params NewStreamerParams) !Streamer {
 	}
 }
 
+@[params]
+struct NewMyCeliumClientParams {
+	port int    = 8080              // HTTP server port
+	name string = 'streamer_client' // Mycelium client name
+}
+
+fn new_mycelium_client(params NewMyCeliumClientParams) !&mycelium.Mycelium {
+	mut mycelium_client := mycelium.get()!
+	mycelium_client.server_url = 'http://localhost:${params.port}'
+	mycelium_client.name = params.name
+	return mycelium_client
+}
+
 // ConnectStreamerParams defines parameters for connecting to an existing streamer
 @[params]
 pub struct ConnectStreamerParams {
 pub mut:
 	master_public_key string @[required] // Public key of the master node
 	worker_public_key string @[required] // Public key of the worker node that the user want to join it
+	master_address    string @[required] // Public key of the master node
+	worker_address    string @[required] // Public key of the worker node that the user want to join it
 	port              int    = 8080
 	name              string = 'streamer'
 }
 
 // Connects to an existing streamer master node; intended for worker nodes
 pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
-	println('Connecting to an existing streamer...')
 	mut streamer_ := new_streamer(
 		port: params.port
 		name: params.name
 	)!
 
-	// Initialize Mycelium client to communicate with the master node
-	mut mycelium_client := mycelium.get()!
-	mycelium_client.server_url = 'http://localhost:${params.port}'
-	mycelium_client.name = 'streamer_client'
-
-	// 	Set up a connection to the master node, fake master until we load it.
-	streamer_.master.mycelium_client = mycelium_client
-	streamer_.master.master_public_key = params.master_public_key
-	streamer_.master.worker_public_key = params.worker_public_key
-	streamer_.master.port = params.port
-
-	// Send a request to the master node to get its state
-	mycelium_client.send_msg(
-		topic:      'set_master_state'
-		payload:    'set_master_state'
+	streamer_.add_master(
 		public_key: params.master_public_key
-	) or { return error('Failed to send request to master node: ${err}') }
+		address:    params.master_address
+	)!
 
-	// Wait for a response from the master node
-	for i := 0; i < 20; i++ {
-		println('Waiting for the master node to respond...')
-		time.sleep(2 * time.second)
-		streamer_.master.set_master_state() or {}
-		streamer_.master.get_master_state() or {}
-	}
+	mut worker_node := streamer_.master.add_worker(
+		public_key: params.worker_public_key
+		address:    params.worker_address
+	)!
+
+	worker_node.connect_to_master()!
+	streamer_.master.mycelium_client = new_mycelium_client(name: params.name, port: params.port)!
+	worker_node.mycelium_client = new_mycelium_client(name: params.name, port: params.port)!
 
 	return streamer_
 }
@@ -145,13 +147,24 @@ pub fn (self Streamer) get_master() StreamerNode {
 	return self.master
 }
 
-// Starts the master node
-pub fn (mut self Streamer) start_master() ! {
-	println('Starting streamer master node...')
-	self.master.start()!
+@[params]
+pub struct GetWorkerParams {
+pub mut:
+	public_key string @[required] // Public key of the worker node
 }
 
-// Stops the master node
-pub fn (mut self Streamer) stop_master() ! {
-	// self.master.stop()!
+// Get worker node
+pub fn (self Streamer) get_worker(params GetWorkerParams) !StreamerNode {
+	if !self.master.is_master {
+		return self.master
+	}
+
+	// Find the worker node
+	for worker in self.master.workers {
+		if params.public_key == worker.public_key {
+			return worker
+		}
+	}
+
+	return error('Worker with public key ${params.public_key} not found')
 }
