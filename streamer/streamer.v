@@ -2,8 +2,6 @@ module streamer
 
 import freeflowuniverse.herolib.clients.mycelium
 import freeflowuniverse.herolib.data.ourdb
-import time
-import encoding.base64
 
 // Streamer represents the entire network, including master and workers
 pub struct Streamer {
@@ -74,20 +72,6 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 
 	if !master_node.is_running() {
 		return error('Master node is not running!')
-	}
-
-	master_node.mycelium_client.send_msg(
-		topic:      'get_master_node'
-		payload:    ''
-		public_key: master_node.public_key
-	)!
-
-	for i := 0; i < 10; i++ {
-		println('Connecting to master node...')
-		time.sleep(2 * time.second)
-
-		println('Waiting for master node to be connected...')
-		streamer_.master.get_connect_master_message() or {}
 	}
 
 	return streamer_

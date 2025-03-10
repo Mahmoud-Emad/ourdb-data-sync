@@ -1,7 +1,7 @@
 module main
 
 import streamer
-import time
+// import time
 
 fn main() {
 	println('Strating the streamer first!')
@@ -11,27 +11,29 @@ fn main() {
 		port:       8080
 	)!
 
-	mut master_node := streamer_.get_master()
-	mut worker_node := master_node.add_worker(
-		public_key: '46a9f9cee1ce98ef7478f3dea759589bbf6da9156533e63fed9f233640ac072c'
-		address:    '59c:28ee:8597:6c20:3b2f:a9ee:2e18:9d4f'
-	)!
+	println('streamer_: ${streamer_}')
 
-	println('Writing to the master node')
-	mut nm := 0
-	for {
-		println('Set 5 records...')
-		time.sleep(2 * time.second)
-		if nm == 5 {
-			break
-		}
-		id := master_node.write(
-			// In incremental mode the first ID will be 0
-			value: 'value${nm + 1}'
-		)!
-		println('Set value with ID ${id}')
-		nm += 1
-	}
+	// mut master_node := streamer_.get_master()
+	// mut worker_node := master_node.add_worker(
+	// 	public_key: '46a9f9cee1ce98ef7478f3dea759589bbf6da9156533e63fed9f233640ac072c'
+	// 	address:    '59c:28ee:8597:6c20:3b2f:a9ee:2e18:9d4f'
+	// )!
+
+	// println('Writing to the master node')
+	// mut nm := 0
+	// for {
+	// 	println('Set 5 records...')
+	// 	time.sleep(2 * time.second)
+	// 	if nm == 5 {
+	// 		break
+	// 	}
+	// 	id := master_node.write(
+	// 		// In incremental mode the first ID will be 0
+	// 		value: 'value${nm + 1}'
+	// 	)!
+	// 	println('Set value with ID ${id}')
+	// 	nm += 1
+	// }
 
 	// println('Reading from the worker node')
 	// value := worker_node.read(
