@@ -80,13 +80,27 @@ pub fn (mut node StreamerNode) start() ! {
 
 	// Main loop for printing blobs
 	for {
-		println('Connected workers: ${node.workers.len}')
+		if node.is_master {
+			println('Connected workers: ${node.workers.len}')
+		}
+
 		time.sleep(2 * time.second)
 		node.handle_log_messages() or {}
 		node.handle_connect_messages() or {}
 		node.ping_workers() or {}
 		node.sync_db() or {}
+		node.get_connect_master_message() or {}
 	}
+}
+
+fn (mut node StreamerNode) get_connect_master_message() ! {
+	msg := node.mycelium_client.receive_msg(
+		wait:  false
+		peek:  true
+		topic: 'get_master_node'
+	)!
+	decoded_message := base64.decode(msg.payload).bytestr()
+	println('decoded_message: ${decoded_message}')
 }
 
 fn (mut node StreamerNode) handle_log_messages() ! {
