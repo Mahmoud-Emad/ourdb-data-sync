@@ -80,34 +80,26 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 		address:    params.address
 	) or { return error('Failed to add master node: ${err}') }
 
+	streamer_.master = master_node
+
 	if !master_node.is_running() {
 		return error('Master node is not running!')
 	}
 
+	master_node.mycelium_client.send_msg(
+		topic:      'get_master_node'
+		payload:    ''
+		public_key: master_node.public_key
+	)!
+
 	for i := 0; i < 10; i++ {
 		println('Connecting to master node...')
-		master_node.mycelium_client.send_msg(
-			topic:      'get_master_node'
-			payload:    ''
-			public_key: master_node.public_key
-		)!
-
 		time.sleep(2 * time.second)
 
 		println('Waiting for master node to be connected...')
 		streamer_.get_connect_master_message() or {}
-
-		// if decoded_message.len > 0 {
-		// 	to_json_str := base64(decoded_message).bytestr()
-		// 	master_node := json.decode(StreamerNode, to_json_str) or {
-		// 		return error('Failed to decode master node: ${err}')
-		// 	}
-		// 	master_node.mycelium_client.server_url = 'http://localhost:${streamer_.port}'
-		// 	break
-		// }
 	}
 
-	streamer_.master = master_node
 	return streamer_
 }
 
