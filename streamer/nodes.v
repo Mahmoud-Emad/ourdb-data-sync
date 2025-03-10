@@ -21,6 +21,7 @@ pub mut:
 	is_master         bool // Flag indicating if this is a master node
 	db                &ourdb.OurDB @[skip; str: skip] // Embedded key-value database
 	master_public_key string // Public key of the master node (for workers)
+	worker_public_key string // Public key of the worker node (for master)
 	last_synced_index u32    // Last synchronized index for workers
 }
 
@@ -255,19 +256,46 @@ pub fn (mut node StreamerNode) set_master_state() ! {
 		return
 	}
 
-	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'get_master_state')!
-	println('message: ${message}')
-	// if message.payload.len > 0 {
-	// 	mut master_json := base64.decode(message.payload).bytestr()
-	// 	if master_json.len != 0 {
-	// 		master_json = base64.decode(master_json).bytestr()
-	// 	}
-	// 	master := json.decode(StreamerNode, master_json) or {
-	// 		return error('Failed to decode worker node: ${err}')
-	// 	}
+	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'set_master_state')!
+	if message.payload.len > 0 {
+		master_json := json.encode(node)
+		master_base64 := base64.encode(master_json.bytes())
+		log_event(event_type: 'logs', message: 'Sending master state to workers')
+		node.mycelium_client.send_msg(
+			topic:      'get_master_state'
+			payload:    master_base64
+			public_key: node.worker_public_key
+		) or { return error('Failed to send connect message: ${err}') }
+		log_event(event_type: 'logs', message: 'Master state sent to workers')
+	}
+}
 
-	// 	node = master
-	// }
+// Set the state of the master node
+pub fn (mut node StreamerNode) get_master_state() ! {
+	if node.is_master {
+		return
+	}
+
+	println('Getting master state...')
+	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'get_master_state')!
+	println('After getting message: ${message}')
+	if message.payload.len > 0 {
+		println('In message payload')
+		mut master_json := base64.decode(message.payload).bytestr()
+		if master_json.len != 0 {
+			master_json = base64.decode(master_json).bytestr()
+		}
+
+		mut master := json.decode(StreamerNode, master_json) or {
+			return error('Failed to decode master node: ${err}')
+		}
+
+		log_event(
+			event_type: 'logs'
+			message:    'Received master state from worker node: ${master.public_key}'
+		)
+		node = master
+	}
 }
 
 // ping_nodes pings all workers and removes unresponsive ones (master only)

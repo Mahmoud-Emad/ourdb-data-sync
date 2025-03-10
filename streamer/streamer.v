@@ -51,10 +51,10 @@ pub fn new_streamer(params NewStreamerParams) !Streamer {
 @[params]
 pub struct ConnectStreamerParams {
 pub mut:
-	address    string @[required] // Master address
-	public_key string @[required] // Master public key
-	port       int    @[required] // Port to connect to
-	name       string = 'new_streamer'
+	master_public_key string @[required] // Public key of the master node
+	worker_public_key string @[required] // Public key of the worker node that the user want to join it
+	port              int    = 8080
+	name              string = 'streamer'
 }
 
 // Connects to an existing streamer master node; intended for worker nodes
@@ -70,14 +70,17 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 	mycelium_client.server_url = 'http://localhost:${params.port}'
 	mycelium_client.name = 'streamer_client'
 
-	// 	Set up a connection to the master node
+	// 	Set up a connection to the master node, fake master until we load it.
 	streamer_.master.mycelium_client = mycelium_client
+	streamer_.master.master_public_key = params.master_public_key
+	streamer_.master.worker_public_key = params.worker_public_key
+	streamer_.master.port = params.port
 
 	// Send a request to the master node to get its state
 	mycelium_client.send_msg(
-		topic:      'get_master_state'
-		payload:    ''
-		public_key: params.public_key
+		topic:      'set_master_state'
+		payload:    'set_master_state'
+		public_key: params.master_public_key
 	) or { return error('Failed to send request to master node: ${err}') }
 
 	// Wait for a response from the master node
@@ -85,6 +88,7 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 		println('Waiting for the master node to respond...')
 		time.sleep(2 * time.second)
 		streamer_.master.set_master_state() or {}
+		streamer_.master.get_master_state() or {}
 	}
 
 	return streamer_
