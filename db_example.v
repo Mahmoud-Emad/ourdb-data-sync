@@ -1,6 +1,7 @@
 module main
 
 import streamer
+import time
 
 fn main() {
 	println('Strating the streamer first!')
@@ -17,9 +18,10 @@ fn main() {
 	)!
 
 	println('Writing to the master node')
-	nm := 0
+	mut nm := 0
 	for {
 		println('Set 5 records...')
+		time.sleep(2 * time.second)
 		if nm == 5 {
 			break
 		}
@@ -28,6 +30,7 @@ fn main() {
 			value: 'value${nm + 1}'
 		)!
 		println('Set value with ID ${id}')
+		nm += 1
 	}
 
 	// println('Reading from the worker node')

@@ -2,6 +2,8 @@ module streamer
 
 import freeflowuniverse.herolib.clients.mycelium
 import freeflowuniverse.herolib.data.ourdb
+import time
+import encoding.base64
 
 // Streamer represents the entire network, including master and workers
 pub struct Streamer {
@@ -60,8 +62,6 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 	mut streamer_ := new_streamer(
 		port: params.port
 		name: params.name
-		// incremental_mode: params.incremental_mode
-		// reset:            params.reset
 	)!
 
 	// TODO: Get the running master data instead
@@ -72,6 +72,35 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 
 	if !master_node.is_running() {
 		return error('Master node is not running!')
+	}
+
+	for i := 0; i < 10; i++ {
+		println('Connecting to master node...')
+		master_node.mycelium_client.send_msg(
+			topic:      'get_master_node'
+			payload:    ''
+			public_key: master_node.public_key
+		)!
+
+		time.sleep(2 * time.second)
+
+		println('Waiting for master node to be connected...')
+		msg := master_node.mycelium_client.receive_msg(
+			wait:  false
+			peek:  true
+			topic: 'get_master_node'
+		)!
+
+		decoded_message := base64.decode(msg.payload).bytestr()
+		println('decoded_message: ${decoded_message}')
+		// if decoded_message.len > 0 {
+		// 	to_json_str := base64(decoded_message).bytestr()
+		// 	master_node := json.decode(StreamerNode, to_json_str) or {
+		// 		return error('Failed to decode master node: ${err}')
+		// 	}
+		// 	master_node.mycelium_client.server_url = 'http://localhost:${streamer_.port}'
+		// 	break
+		// }
 	}
 
 	streamer_.master = master_node
