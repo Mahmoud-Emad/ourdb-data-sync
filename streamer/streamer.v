@@ -2,6 +2,9 @@ module streamer
 
 import freeflowuniverse.herolib.clients.mycelium
 import freeflowuniverse.herolib.data.ourdb
+import encoding.base64
+import json
+import time
 
 // Streamer represents the entire network, including master and workers
 pub struct Streamer {
@@ -62,15 +65,26 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 		name: params.name
 	)!
 
-	mut master_node := streamer_.new_master_node(
+	// Initialize Mycelium client to communicate with the master node
+	mut mycelium_client := mycelium.get()!
+	mycelium_client.server_url = 'http://localhost:${params.port}'
+	mycelium_client.name = 'streamer_client'
+
+	// 	Set up a connection to the master node
+	streamer_.master.mycelium_client = mycelium_client
+
+	// Send a request to the master node to get its state
+	mycelium_client.send_msg(
+		topic:      'get_master_state'
+		payload:    ''
 		public_key: params.public_key
-		address:    params.address
-	) or { return error('Failed to connect to master node: ${err}') }
+	) or { return error('Failed to send request to master node: ${err}') }
 
-	streamer_.master = master_node
-
-	if !master_node.is_running() {
-		return error('Master node is not running!')
+	// Wait for a response from the master node
+	for i := 0; i < 20; i++ {
+		println('Waiting for the master node to respond...')
+		time.sleep(2 * time.second)
+		streamer_.master.set_master_state() or {}
 	}
 
 	return streamer_
@@ -102,11 +116,12 @@ fn (self Streamer) new_master_node(params StreamerNodeParams) !StreamerNode {
 	)!
 
 	return StreamerNode{
-		address:         params.address
-		public_key:      params.public_key
-		mycelium_client: mycelium_client
-		db:              &db
-		is_master:       true
+		address:           params.address
+		public_key:        params.public_key
+		mycelium_client:   mycelium_client
+		db:                &db
+		is_master:         true
+		master_public_key: params.public_key
 	}
 }
 
@@ -134,5 +149,5 @@ pub fn (mut self Streamer) start_master() ! {
 
 // Stops the master node
 pub fn (mut self Streamer) stop_master() ! {
-	self.master.stop()!
+	// self.master.stop()!
 }
