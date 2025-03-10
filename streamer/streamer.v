@@ -56,6 +56,16 @@ pub mut:
 	name       string = 'new_streamer'
 }
 
+fn (mut self Streamer) get_connect_master_message() ! {
+	msg := self.master.mycelium_client.receive_msg(
+		wait:  false
+		peek:  true
+		topic: 'get_master_node'
+	)!
+	decoded_message := base64.decode(msg.payload).bytestr()
+	println('decoded_message: ${decoded_message}')
+}
+
 // Connects to an existing streamer master node, workers should call this methods and will be added later
 pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 	println('Connecting to an existing streamer...')
@@ -85,14 +95,8 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 		time.sleep(2 * time.second)
 
 		println('Waiting for master node to be connected...')
-		msg := master_node.mycelium_client.receive_msg(
-			wait:  false
-			peek:  true
-			topic: 'get_master_node'
-		)!
+		streamer_.get_connect_master_message() or {}
 
-		decoded_message := base64.decode(msg.payload).bytestr()
-		println('decoded_message: ${decoded_message}')
 		// if decoded_message.len > 0 {
 		// 	to_json_str := base64(decoded_message).bytestr()
 		// 	master_node := json.decode(StreamerNode, to_json_str) or {
