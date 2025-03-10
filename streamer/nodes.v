@@ -93,93 +93,30 @@ pub fn (mut node StreamerNode) start_and_listen() ! {
 		message:    'Starting node at ${node.address} with public key ${node.public_key}'
 	)
 	for {
-		if node.is_master {
-			// node.set_master_state() or {}
-			node.handle_sync_requests() or {} // Master handles worker sync requests
-			node.master_sync() or {} // Master syncs with workers
-		} else {
-			node.request_sync() or {} // Worker requests updates from master
-			node.handle_sync_updates() or {} // Worker applies updates
-			node.handle_sync_master() or {}
-		}
+		// if node.is_master {
+		// 	last_synced_index := node.db.get_last_index()!
+		// 	println('last_synced_index: ${last_synced_index}')
+
+		// 	// node.set_master_state() or {}
+		// 	node.master_sync() or {} // Master syncs with workers
+		// } else {
+		// 	node.handle_sync_master() or {}
+		// }
 
 		time.sleep(2 * time.second)
 		node.handle_log_messages() or {}
 		node.handle_connect_messages() or {}
 		node.ping_nodes() or {}
+		node.handle_db_write() or {}
 	}
 }
 
-// sync_db synchronizes the database with workers (master only)
-fn (mut node StreamerNode) sync_db() ! {
-	if !node.is_master {
-		return
-	}
-
-	for mut worker in node.workers {
-		last_synced_index := worker.last_synced_index
-		updates := node.db.push_updates(last_synced_index)! // Get updates since last sync
-		if updates.len > 0 {
-			encoded_updates := base64.encode(updates)
-			node.mycelium_client.send_msg(
-				topic:      'db_sync'
-				payload:    encoded_updates
-				public_key: worker.public_key
-			)!
-		}
-	}
-}
-
-// request_sync sends a request to the master for database updates (worker only)
-fn (mut node StreamerNode) request_sync() ! {
-	if node.is_master {
-		return
-	}
-	last_index := node.db.get_last_index()!
-	encoded_index := base64.encode(last_index.str().bytes())
-	node.mycelium_client.send_msg(
-		topic:      'sync_request'
-		payload:    encoded_index
-		public_key: node.master_public_key
-	)!
-}
-
-// handle_sync_requests processes sync requests from workers (master only)
-fn (mut node StreamerNode) handle_sync_requests() ! {
-	if !node.is_master {
-		return
-	}
-	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'sync_request')!
+fn (mut node StreamerNode) handle_db_write() ! {
+	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'db_write')!
 	if message.payload.len > 0 {
-		decoded_index := base64.decode(message.payload).bytestr().u32()
-		worker_key := message.src_pk // Assuming sender's key is available
-		updates := node.db.push_updates(decoded_index)!
-		encoded_updates := base64.encode(updates)
-		node.mycelium_client.send_msg(
-			topic:      'db_sync'
-			payload:    encoded_updates
-			public_key: worker_key
-		)!
-		// Update worker's last_synced_index
-		for mut worker in node.workers {
-			if worker.public_key == worker_key {
-				worker.last_synced_index = node.db.get_last_index()!
-				break
-			}
-		}
-	}
-}
-
-// handle_sync_updates applies database updates received from the master (worker only)
-fn (mut node StreamerNode) handle_sync_updates() ! {
-	if node.is_master {
-		return
-	}
-	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'db_sync')!
-	if message.payload.len > 0 {
-		updates := base64.decode(message.payload)
-		node.db.sync_updates(updates)! // Apply updates to worker's database
-		node.last_synced_index = node.db.get_last_index()! // Update sync state
+		encoded_index := base64.decode(message.payload)
+		println('Write data ${encoded_index.bytestr()}')
+		node.db.set(data: encoded_index)!
 	}
 }
 
@@ -196,13 +133,27 @@ pub fn (mut node StreamerNode) write(params WriteParams) !u32 {
 	if node.db.incremental_mode && params.key != 0 {
 		return error('Incremental mode is enabled, remove the key parameter')
 	}
+
 	if !node.is_master {
 		return error('Only master nodes can write to the database')
 	}
-	data_bytes := params.value.bytes()
-	id := node.db.set(data: data_bytes) or { return error('Failed to write to database: ${err}') }
-	node.sync_db()! // Trigger synchronization after write
-	return id
+
+	mut keys := []string{}
+	keys << node.public_key
+
+	for worker in node.workers {
+		keys << worker.public_key
+	}
+
+	for key in keys {
+		node.mycelium_client.send_msg(
+			topic:      'db_write'
+			payload:    base64.encode(params.value.bytes())
+			public_key: key
+		)!
+	}
+
+	return 0
 }
 
 // ReadParams defines parameters for reading from the database
@@ -243,29 +194,29 @@ fn (mut node StreamerNode) handle_log_messages() ! {
 	}
 }
 
-// handle_log_messages processes incoming log messages
-fn (mut node StreamerNode) handle_sync_master() ! {
-	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'master_sync')!
-	if message.payload.len > 0 {
-		mut master_json := base64.decode(message.payload).bytestr()
-		if master_json.len != 0 {
-			master_json = base64.decode(master_json).bytestr()
-		}
+// // handle_log_messages processes incoming log messages
+// fn (mut node StreamerNode) handle_sync_master() ! {
+// 	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'master_sync')!
+// 	if message.payload.len > 0 {
+// 		mut master_json := base64.decode(message.payload).bytestr()
+// 		if master_json.len != 0 {
+// 			master_json = base64.decode(master_json).bytestr()
+// 		}
 
-		master := json.decode(StreamerNode, master_json) or {
-			return error('Failed to decode worker node: ${err}')
-		}
+// 		master := json.decode(StreamerNode, master_json) or {
+// 			return error('Failed to decode worker node: ${err}')
+// 		}
 
-		// Sync specific fields instead of overwriting node
-		if master.public_key == node.master_public_key {
-			// node.db = master.db // We need to fix the invalid memory access bug here.
-			log_event(
-				event_type: 'logs'
-				message:    'Synced state from master node: ${master.public_key}'
-			)
-		}
-	}
-}
+// 		// Sync specific fields instead of overwriting node
+// 		if master.public_key == node.master_public_key {
+// 			// node.db = master.db // We need to fix the invalid memory access bug here.
+// 			log_event(
+// 				event_type: 'logs'
+// 				message:    'Synced state from master node: ${master.public_key}'
+// 			)
+// 		}
+// 	}
+// }
 
 // handle_connect_messages processes connect messages to add workers
 fn (mut node StreamerNode) handle_connect_messages() ! {
@@ -322,28 +273,28 @@ pub fn (mut node StreamerNode) ping_nodes() ! {
 	}
 }
 
-// ping_nodes pings all workers and removes unresponsive ones (master only)
-pub fn (mut node StreamerNode) master_sync() ! {
-	if node.is_master {
-		for mut worker in node.workers {
-			if worker.is_running() {
-				log_event(
-					event_type: 'logs'
-					message:    'Sending master state to worker node: ${worker.public_key}'
-				)
-				master_json := json.encode(node)
-				master_base64 := base64.encode(master_json.bytes())
+// // ping_nodes pings all workers and removes unresponsive ones (master only)
+// pub fn (mut node StreamerNode) master_sync() ! {
+// 	if node.is_master {
+// 		for mut worker in node.workers {
+// 			if worker.is_running() {
+// 				log_event(
+// 					event_type: 'logs'
+// 					message:    'Sending master state to worker node: ${worker.public_key}'
+// 				)
+// 				master_json := json.encode(node)
+// 				master_base64 := base64.encode(master_json.bytes())
 
-				node.mycelium_client.send_msg(
-					topic:      'master_sync'
-					payload:    master_base64
-					public_key: worker.public_key
-				)!
-				log_event(
-					event_type: 'logs'
-					message:    'Sent master state to worker node: ${worker.public_key}'
-				)
-			}
-		}
-	}
-}
+// 				node.mycelium_client.send_msg(
+// 					topic:      'master_sync'
+// 					payload:    master_base64
+// 					public_key: worker.public_key
+// 				)!
+// 				log_event(
+// 					event_type: 'logs'
+// 					message:    'Sent master state to worker node: ${worker.public_key}'
+// 				)
+// 			}
+// 		}
+// 	}
+// }
