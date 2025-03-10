@@ -9,17 +9,17 @@ pub mut:
 	name             string = 'streamer'
 	port             int    = 8080
 	master           StreamerNode
-	incremental_mode bool = true // Incremental mode
+	incremental_mode bool = true // Incremental mode for database
 	reset            bool = true // Reset database
 }
 
-// NewStreamerParams for creating a new streamer
+// NewStreamerParams defines parameters for creating a new streamer
 @[params]
 pub struct NewStreamerParams {
 pub mut:
 	name             string = 'streamer'
 	port             int    = 8080
-	incremental_mode bool   = true // Incremental mode
+	incremental_mode bool   = true // Incremental mode for database
 	reset            bool   = true // Reset database
 }
 
@@ -44,17 +44,17 @@ pub fn new_streamer(params NewStreamerParams) !Streamer {
 	}
 }
 
-// ConnectStreamerParams for connecting to an existing streamer
+// ConnectStreamerParams defines parameters for connecting to an existing streamer
 @[params]
 pub struct ConnectStreamerParams {
 pub mut:
-	address    string @[required] // Master public key
+	address    string @[required] // Master address
 	public_key string @[required] // Master public key
-	port       int    @[required] // Port
+	port       int    @[required] // Port to connect to
 	name       string = 'new_streamer'
 }
 
-// Connects to an existing streamer master node, workers should call this methods and will be added later
+// Connects to an existing streamer master node; intended for worker nodes
 pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 	println('Connecting to an existing streamer...')
 	mut streamer_ := new_streamer(
@@ -62,11 +62,10 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 		name: params.name
 	)!
 
-	// TODO: Get the running master data instead
 	mut master_node := streamer_.new_master_node(
 		public_key: params.public_key
 		address:    params.address
-	) or { return error('Failed to add master node: ${err}') }
+	) or { return error('Failed to connect to master node: ${err}') }
 
 	streamer_.master = master_node
 
@@ -77,26 +76,25 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 	return streamer_
 }
 
-// StreamerMasterParams for creating a new master node
+// StreamerNodeParams defines parameters for creating a new master or worker node
 @[params]
 pub struct StreamerNodeParams {
 pub mut:
 	public_key       string @[required] // Node public key
 	address          string @[required] // Node address
 	db_dir           string = '/tmp/ourdb' // Database directory
-	incremental_mode bool   = true         // Incremental mode
+	incremental_mode bool   = true         // Incremental mode for database
 	reset            bool   = true         // Reset database
 }
 
-// Create a new master node
+// Creates a new master node
 fn (self Streamer) new_master_node(params StreamerNodeParams) !StreamerNode {
-	// Initialize Mycelium client (pseudo-code; adjust based on Mycelium API)
 	mut mycelium_client := mycelium.get()!
 	mycelium_client.server_url = 'http://localhost:${self.port}'
 	mycelium_client.name = 'streamer_master'
 
 	mut db := ourdb.new(
-		record_nr_max:    16777216 - 1 // max size of records
+		record_nr_max:    16777216 - 1
 		record_size_max:  1024
 		path:             params.db_dir
 		reset:            params.reset
@@ -114,13 +112,11 @@ fn (self Streamer) new_master_node(params StreamerNodeParams) !StreamerNode {
 
 // Adds a master node to the streamer
 pub fn (mut self Streamer) add_master(params StreamerNodeParams) !StreamerNode {
-	// Prevent multiple master nodes
 	if self.master.public_key.len != 0 {
 		return error('Streamer already has a master node!')
 	}
 
 	new_master := self.new_master_node(params)!
-
 	self.master = new_master
 	return self.master
 }
@@ -130,12 +126,13 @@ pub fn (self Streamer) get_master() StreamerNode {
 	return self.master
 }
 
-// Starts only the master node
+// Starts the master node
 pub fn (mut self Streamer) start_master() ! {
 	println('Starting streamer master node...')
 	self.master.start()!
 }
 
+// Stops the master node
 pub fn (mut self Streamer) stop_master() ! {
 	self.master.stop()!
 }
