@@ -1,7 +1,3 @@
-You're right—creating a clear and comprehensive README file is a great first step to document the project, explain its purpose, architecture, and usage, and provide a simple diagram for clarity. Below, I’ll draft a README file for your project, including a simplified architecture diagram in text form (using ASCII art, as GitHub supports this). You can copy this into your project’s repository and adapt it as needed.
-
----
-
 # Key-Value HTTP Service with Master-Worker Architecture over Mycelium
 
 ## Overview
@@ -151,34 +147,20 @@ The HTTP server exposes the following endpoints:
 
 ### Code Structure
 
-- `server.v`: Implements the HTTP server and request routing logic.
-- `master.v`: Implements the master node, handling writes and synchronization.
-- `worker.v`: Implements the worker nodes, handling reads and receiving updates.
-- `mycelium.v`: (Optional) Helper module for Mycelium network communication.
+- streamer
+   - `streamer.v`: Implements the HTTP server and request routing logic.
+   - `nodes.v`: Implements the master/worker node, handling writes and synchronization.
+
+- http_server
+   - `server.v`: Implements the HTTP server and request routing logic.
+
+- examples
+   - `master_example.v`: A simple example that starts the streamer and master node.
+   - `worker_example.v`: A simple example that starts the streamer and worker node.
+   - `db_example.v`: A simple example that starts the streamer, master, and worker nodes.
 
 ### Extending the System
 
 - **Add More Workers**: Scale the system by starting additional worker nodes and updating the HTTP server’s worker list.
 - **Enhance Synchronization**: Implement more advanced replication strategies (e.g., conflict resolution, versioning) if needed.
 - **Improve Load Balancing**: Add sophisticated load balancing for read requests (e.g., based on worker load or latency).
-
-## Contributing
-
-Contributions are welcome! Please fork the repository, make your changes, and submit a pull request. Ensure your code follows V’s style guidelines and includes tests.
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
-
-## Contact
-
-For questions or support, please contact the FreeFlow Universe team at [support@freeflowuniverse.org](mailto:support@freeflowuniverse.org).
-
----
-
-### Notes on the README
-1. **Diagram**: The ASCII art diagram is simplified to fit within GitHub’s rendering capabilities. If you prefer a more detailed or graphical diagram, you can create one using tools like Lucidchart, Draw.io, or Graphviz and include it as an image in the README (e.g., `![Architecture Diagram](docs/architecture.png)`).
-2. **Customization**: You may need to customize the installation steps, usage examples, and configuration details based on your specific setup (e.g., Mycelium network configuration, port numbers, etc.).
-3. **Next Steps**: Once you’re happy with the README, you can add it to your repository’s root directory as `README.md`. If you’d like to proceed with implementation, I can help with writing the actual V code for the HTTP server, master, workers, and Mycelium integration.
-
-Please let me know if you’d like to refine the README further or move on to coding!

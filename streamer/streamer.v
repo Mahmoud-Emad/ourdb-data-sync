@@ -31,14 +31,18 @@ pub mut:
 
 // Creates a new streamer instance
 pub fn new_streamer(params NewStreamerParams) !Streamer {
-	println('Creating a new streamer...')
-	mut db := ourdb.new(
+	log_event(
+		event_type: 'logs'
+		message:    'Creating new streamer'
+	)
+
+	mut db := new_db(
 		incremental_mode: params.incremental_mode
 		reset:            params.reset
 	)!
 
 	master := StreamerNode{
-		db: &db
+		db: db
 	}
 
 	return Streamer{
@@ -90,17 +94,6 @@ pub mut:
 	master_public_key string @[required] // Public key of the master node
 	port              int    = 8080       // HTTP server port
 	name              string = 'streamer' // Mycelium client name
-	// master_address    string @[required] // Public key of the master node
-	// worker_public_key string @[required] // Public key of the worker node that the user want to join it
-	// worker_address    string @[required] // Public key of the worker node that the user want to join it
-}
-
-fn on_master_sync_replay(mut mycelium_client mycelium.Mycelium) !string {
-	message := mycelium_client.receive_msg(wait: false, peek: true, topic: 'master_sync_replay')!
-	if message.payload.len > 0 {
-		return message.payload
-	}
-	return ''
 }
 
 // Connects to an existing streamer master node; intended for worker nodes
@@ -125,11 +118,11 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 	// 	return error('Master node is not running')
 	// }
 
-	// 1. Get the master node
-	// 2. Keep listening until we receive replay from the master node
-	// 2. Sync the master DB
-	// 3. Sync the master workers
-	// 4. Push to the network that a new visitor has joined
+	// 1. Get the master node | Done
+	// 2. Keep listening until we receive replay from the master node | Done
+	// 3. Sync the master workers | Done
+	// 4. Push to the network that a new visitor has joined | Done
+	// 5. Sync the master DB InProgress...
 
 	mut mycelium_client := new_mycelium_client(
 		port: params.port
@@ -154,7 +147,7 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 			message:    'Waiting for master sync replay'
 		)
 
-		encoded_master = on_master_sync_replay(mut mycelium_client) or { '' }
+		encoded_master = handle_master_sync_replay(mut mycelium_client) or { '' }
 		if encoded_master.len > 0 {
 			log_event(
 				event_type: 'info'
@@ -180,6 +173,8 @@ pub fn connect_streamer(params ConnectStreamerParams) !Streamer {
 	master := json.decode(StreamerNode, master_to_json) or {
 		return error('Failed to decode master node: ${err}')
 	}
+
+	println('MasterDB is: ${master.db}')
 
 	streamer_.master = master
 

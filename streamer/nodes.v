@@ -16,10 +16,10 @@ pub mut:
 	mycelium_client   &mycelium.Mycelium = unsafe { nil } // Mycelium client instance
 	workers           []StreamerNode // List of connected workers (for master nodes)
 	port              int = 8080 // HTTP server port
-	is_master         bool // Flag indicating if this is a master node
-	db                &ourdb.OurDB @[skip; str: skip] // Embedded key-value database
-	master_public_key string // Public key of the master node (for workers)
-	last_synced_index u32    // Last synchronized index for workers
+	is_master         bool         // Flag indicating if this is a master node
+	db                &ourdb.OurDB // Embedded key-value database
+	master_public_key string       // Public key of the master node (for workers)
+	last_synced_index u32          // Last synchronized index for workers
 }
 
 // is_running checks if the node is operational by pinging its address
@@ -147,10 +147,22 @@ fn (mut node StreamerNode) handle_master_sync() ! {
 		master_id := base64.decode(message.payload).bytestr()
 		log_event(event_type: 'logs', message: 'Calling master ${master_id} for sync')
 
-		master_base64 := node.to_json_str()!
+		master_json := node.to_json_str()!
+		println('Master db: ${node.db}')
+		println('master_json: ${master_json}')
 		node.mycelium_client.send_msg(
 			topic:      'master_sync_replay'
-			payload:    master_base64
+			payload:    master_json
+			public_key: message.src_pk
+		)!
+
+		// // last_synced_index := node.db.get_last_index()!
+		database_data_bytes := node.db.push_updates(0) or {
+			return error('Failed to push updates: ${err}')
+		}
+		node.mycelium_client.send_msg(
+			topic:      'master_sync_db'
+			payload:    master_json
 			public_key: message.src_pk
 		)!
 
@@ -211,4 +223,12 @@ pub fn (mut node StreamerNode) handle_ping_nodes() ! {
 			public_key: node.master_public_key
 		)!
 	}
+}
+
+fn handle_master_sync_replay(mut mycelium_client mycelium.Mycelium) !string {
+	message := mycelium_client.receive_msg(wait: false, peek: true, topic: 'master_sync_replay')!
+	if message.payload.len > 0 {
+		return message.payload
+	}
+	return ''
 }
