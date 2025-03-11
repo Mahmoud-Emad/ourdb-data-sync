@@ -7,9 +7,6 @@ import freeflowuniverse.herolib.osal
 import encoding.base64
 import json
 
-// Maximum number of workers allowed
-const max_workers = 10
-
 // StreamerNode represents either a master or worker node in the streamer network
 pub struct StreamerNode {
 pub mut:
@@ -38,7 +35,6 @@ fn (mut worker StreamerNode) connect_to_master() ! {
 	}
 
 	worker_json := json.encode(worker)
-	worker_base64 := base64.encode(worker_json.bytes())
 
 	log_event(
 		event_type: 'connection'
@@ -47,38 +43,9 @@ fn (mut worker StreamerNode) connect_to_master() ! {
 
 	worker.mycelium_client.send_msg(
 		topic:      'connect'
-		payload:    worker_base64
+		payload:    worker_json
 		public_key: worker.master_public_key
 	) or { return error('Failed to send connect message: ${err}') }
-}
-
-// add_worker creates and registers a new worker node under the master
-pub fn (mut node StreamerNode) add_worker(params StreamerNodeParams) !StreamerNode {
-	if node.workers.len >= max_workers {
-		return error('Maximum worker limit reached')
-	}
-
-	mut client := new_mycelium_client(name: 'streamer_worker_node', port: node.port)!
-	mut db := ourdb.new(
-		record_nr_max:    16777216 - 1
-		record_size_max:  1024
-		path:             params.db_dir
-		reset:            params.reset
-		incremental_mode: params.incremental_mode
-	)!
-
-	new_worker := StreamerNode{
-		address:           params.address
-		public_key:        params.public_key
-		mycelium_client:   client
-		is_master:         false
-		db:                &db
-		master_public_key: node.public_key
-		last_synced_index: 0
-	}
-
-	node.workers << new_worker
-	return new_worker
 }
 
 // start_and_listen runs the node's main event loop
@@ -91,7 +58,8 @@ pub fn (mut node StreamerNode) start_and_listen() ! {
 		time.sleep(2 * time.second)
 		node.handle_log_messages() or {}
 		node.handle_connect_messages() or {}
-		node.ping_nodes() or {}
+		node.handle_ping_nodes() or {}
+		node.handle_master_sync() or {}
 	}
 }
 
@@ -166,6 +134,33 @@ fn (mut node StreamerNode) handle_log_messages() ! {
 	}
 }
 
+// to_json_str converts the node to json string
+fn (mut node StreamerNode) to_json_str() !string {
+	mut to_json := json.encode(node)
+	return to_json
+}
+
+// master_sync processes incoming master sync messages
+fn (mut node StreamerNode) handle_master_sync() ! {
+	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'master_sync')!
+	if message.payload.len > 0 {
+		master_id := base64.decode(message.payload).bytestr()
+		log_event(event_type: 'logs', message: 'Calling master ${master_id} for sync')
+
+		master_base64 := node.to_json_str()!
+		node.mycelium_client.send_msg(
+			topic:      'master_sync_replay'
+			payload:    master_base64
+			public_key: message.src_pk
+		)!
+
+		log_event(
+			event_type: 'logs'
+			message:    'Responded to master ${master_id} for sync'
+		)
+	}
+}
+
 // handle_connect_messages processes connect messages to add workers
 fn (mut node StreamerNode) handle_connect_messages() ! {
 	message := node.mycelium_client.receive_msg(wait: false, peek: true, topic: 'connect')!
@@ -184,8 +179,8 @@ fn (mut node StreamerNode) handle_connect_messages() ! {
 	}
 }
 
-// ping_nodes pings all workers or the master, removing unresponsive workers
-pub fn (mut node StreamerNode) ping_nodes() ! {
+// handle_ping_nodes pings all workers or the master, removing unresponsive workers
+pub fn (mut node StreamerNode) handle_ping_nodes() ! {
 	if node.is_master {
 		mut i := 0
 		for i < node.workers.len {
