@@ -225,7 +225,10 @@ pub fn (mut self Streamer) add_master(params StreamerNodeParams) !StreamerNode {
 		return error('Streamer already has a master node!')
 	}
 
-	new_master := self.new_node(params)!
+	mut params_ := params
+	params_.master = true
+
+	new_master := self.new_node(params_)!
 	self.master = new_master
 	return self.master
 }
@@ -259,6 +262,15 @@ pub fn (mut self Streamer) add_worker(params StreamerNodeParams) !StreamerNode {
 // Gets the master node
 pub fn (self Streamer) get_master() StreamerNode {
 	return self.master
+}
+
+// Get master worker nodes
+pub fn (self Streamer) get_workers() ![]StreamerNode {
+	if self.master.public_key.len == 0 {
+		return error('Streamer has no master node')
+	}
+
+	return self.master.workers
 }
 
 @[params]
